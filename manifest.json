@@ -1,0 +1,16 @@
+{
+  "name": "刷题宝 - 题库练习",
+  "short_name": "刷题宝",
+  "description": "支持选择、判断、填空等多种题型的刷题APP，自带错题本和统计功能",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
