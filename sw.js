@@ -2,6 +2,7 @@ const CACHE_NAME = 'quiz-app-v1';
 const ASSETS = [
   'index.html',
   'manifest.json',
+  '学校安全考试题库.json',
   'sample-questions.json'
 ];
 
