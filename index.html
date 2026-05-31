@@ -298,6 +298,7 @@ let questionBank = null;       // 当前题库
 let quizQuestions = [];        // 本次答题的题目列表
 let currentIndex = 0;         // 当前题号
 let userAnswers = [];         // 用户答案
+let confirmedSet = new Set(); // 已确认提交的题目索引
 let timerInterval = null;
 let timerSeconds = 0;
 let quizStarted = false;
@@ -438,6 +439,7 @@ function startQuiz() {
   quizQuestions = pool;
   currentIndex = 0;
   userAnswers = new Array(pool.length).fill(null);
+  confirmedSet = new Set();
   timerSeconds = 0;
   quizStarted = true;
 
@@ -459,6 +461,7 @@ function startWrongBookQuiz() {
   quizQuestions = shuffle(pool);
   currentIndex = 0;
   userAnswers = new Array(pool.length).fill(null);
+  confirmedSet = new Set();
   timerSeconds = 0;
   quizStarted = true;
   switchScreen('quiz');
@@ -487,43 +490,45 @@ function renderQuestion() {
   const typeLabel = { single: '单选题', multi: '多选题', tf: '判断题', fill: '填空题' };
   const existingAnswer = userAnswers[currentIndex];
 
+  const isConfirmed = confirmedSet.has(currentIndex);
+
   let html = `<div class="q-meta"><span>${q.category || ''}</span><span class="q-type">${typeLabel[q.type] || q.type}</span></div>`;
   html += `<div class="q-text">${currentIndex + 1}. ${q.question}</div>`;
 
   if (q.type === 'single' || q.type === 'multi') {
     q.options.forEach((opt, i) => {
       let cls = 'option';
-      if (existingAnswer) {
+      if (isConfirmed) {
         const userSel = Array.isArray(existingAnswer) ? existingAnswer : [existingAnswer];
         if (q.answer.includes(i) && userSel.includes(i)) cls += ' correct';
         else if (!q.answer.includes(i) && userSel.includes(i)) cls += ' wrong';
         else if (q.answer.includes(i)) cls += ' correct';
-      } else if (q.type === 'single' && Array.isArray(existingAnswer) === false && existingAnswer === i) {
+      } else if (q.type === 'single' && existingAnswer === i) {
         cls += ' selected';
       } else if (q.type === 'multi' && Array.isArray(existingAnswer) && existingAnswer.includes(i)) {
         cls += ' selected';
       }
-      const disabled = existingAnswer ? 'disabled' : '';
+      const disabled = isConfirmed ? 'disabled' : '';
       html += `<button class="${cls}" ${disabled} onclick="selectOption(${i})">${'ABCDEFGH'[i]}. ${opt}</button>`;
     });
-    if (q.type === 'multi' && !existingAnswer) {
+    if (q.type === 'multi' && !isConfirmed) {
       html += `<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="confirmMulti()">确认多选答案</button>`;
     }
   } else if (q.type === 'tf') {
     ['正确 ✓', '错误 ✗'].forEach((opt, i) => {
       let cls = 'option';
-      if (existingAnswer !== null) {
-        const isCorrect = q.answer[0] === i;
-        if (existingAnswer === i && isCorrect) cls += ' correct';
-        else if (existingAnswer === i && !isCorrect) cls += ' wrong';
-        else if (isCorrect) cls += ' correct';
+      if (isConfirmed) {
+        const isCorrectTF = q.answer[0] === i;
+        if (existingAnswer === i && isCorrectTF) cls += ' correct';
+        else if (existingAnswer === i && !isCorrectTF) cls += ' wrong';
+        else if (isCorrectTF) cls += ' correct';
       }
-      html += `<button class="${cls}" ${existingAnswer !== null ? 'disabled' : ''} onclick="selectTF(${i})">${opt}</button>`;
+      html += `<button class="${cls}" ${isConfirmed ? 'disabled' : ''} onclick="selectTF(${i})">${opt}</button>`;
     });
   } else if (q.type === 'fill') {
     const val = existingAnswer || '';
-    html += `<input class="fill-input" type="text" id="fill-answer" placeholder="输入你的答案..." value="${escapeHtml(val)}" ${existingAnswer ? 'disabled' : ''}>`;
-    if (!existingAnswer) {
+    html += `<input class="fill-input" type="text" id="fill-answer" placeholder="输入你的答案..." value="${escapeHtml(val)}" ${isConfirmed ? 'disabled' : ''}>`;
+    if (!isConfirmed) {
       html += `<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="confirmFill()">提交答案</button>`;
     }
   }
@@ -549,6 +554,7 @@ function selectOption(idx) {
 function confirmMulti() {
   const q = quizQuestions[currentIndex];
   const ans = userAnswers[currentIndex] || [];
+  confirmedSet.add(currentIndex);
   checkAnswerMulti(ans);
   renderQuestion();
 }
@@ -570,6 +576,7 @@ function confirmFill() {
 
 function checkAnswer(userAns) {
   const q = quizQuestions[currentIndex];
+  confirmedSet.add(currentIndex);
   const correctAns = q.answer[0];
   const isCorrect = userAns === correctAns;
   showFeedback(isCorrect, q.explanation);
@@ -587,6 +594,7 @@ function checkAnswerMulti(userArr) {
 
 function checkAnswerFill(userVal) {
   const q = quizQuestions[currentIndex];
+  confirmedSet.add(currentIndex);
   const isCorrect = q.answer.some(a => String(a).toLowerCase().trim() === userVal.toLowerCase().trim());
   showFeedback(isCorrect, q.explanation);
   saveProgress(q.id, isCorrect);
@@ -730,6 +738,7 @@ function showResults() {
 
 function restartQuiz() {
   userAnswers = new Array(quizQuestions.length).fill(null);
+  confirmedSet = new Set();
   currentIndex = 0;
   timerSeconds = 0;
   quizStarted = true;
