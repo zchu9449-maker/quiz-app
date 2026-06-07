@@ -166,6 +166,7 @@ textarea{width:100%;height:150px;background:var(--accent);border:none;border-rad
   </div>
 
   <button class="btn btn-primary" onclick="showCategoryPicker()">🎯 开始刷题</button>
+  <button class="btn btn-primary" id="btn-resume" onclick="resumeQuiz()" style="display:none;background:var(--orange)">▶ 继续上次 <span id="resume-info"></span></button>
   <button class="btn btn-outline" onclick="startWrongBookQuiz()">📝 错题重练 <span id="home-wrong-count" style="color:var(--red)"></span></button>
   <button class="btn btn-secondary" onclick="showImportModal()">📥 导入题库</button>
   <div style="text-align:center;margin-top:8px">
@@ -311,6 +312,27 @@ function loadData() {
 function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
 function getData() { return loadData(); }
 
+// Session save/resume
+function saveSession() {
+  if (!quizStarted || quizQuestions.length === 0) return;
+  const session = {
+    bankName: questionBank ? questionBank.name : '',
+    questionIds: quizQuestions.map(q => q.id),
+    currentIndex: currentIndex,
+    userAnswers: userAnswers,
+    confirmedArr: Array.from(confirmedSet),
+    timerSeconds: timerSeconds,
+    total: quizQuestions.length
+  };
+  localStorage.setItem(STORAGE_KEY + '_session', JSON.stringify(session));
+}
+function loadSession() {
+  const raw = localStorage.getItem(STORAGE_KEY + '_session');
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch(e) { return null; }
+}
+function clearSession() { localStorage.removeItem(STORAGE_KEY + '_session'); }
+
 // ==================== QUESTION BANK ====================
 async function loadQuestionBank(source) {
   if (typeof source === 'string') {
@@ -373,6 +395,19 @@ function refreshHome() {
   document.getElementById('stat-wrong').textContent = data.wrongBook.length;
   document.getElementById('home-wrong-count').textContent = data.wrongBook.length ? `(${data.wrongBook.length}题)` : '';
   document.getElementById('current-bank-name').textContent = questionBank ? questionBank.name : '未加载';
+
+  // Show resume button if session exists
+  const session = loadSession();
+  const resumeBtn = document.getElementById('btn-resume');
+  if (session && session.questionIds && session.questionIds.length > 0 &&
+      session.currentIndex < session.questionIds.length) {
+    const answered = session.confirmedArr ? session.confirmedArr.length : 0;
+    resumeBtn.style.display = '';
+    document.getElementById('resume-info').textContent =
+      `（${session.currentIndex + 1}/${session.total}题，已答${answered}题，${Math.floor(session.timerSeconds / 60)}分${session.timerSeconds % 60}秒）`;
+  } else {
+    resumeBtn.style.display = 'none';
+  }
 }
 
 // ==================== CATEGORY PICKER ====================
@@ -415,6 +450,39 @@ function updateCatSelection() {
 }
 
 // ==================== QUIZ LOGIC ====================
+function resumeQuiz() {
+  const session = loadSession();
+  if (!session || !session.questionIds || session.questionIds.length === 0) {
+    alert('没有可恢复的答题记录'); return;
+  }
+  const pool = session.questionIds.map(id => {
+    const q = getQuestionById(id);
+    return q || null;
+  }).filter(Boolean);
+  if (pool.length === 0) { alert('题库已变更，无法恢复'); clearSession(); return; }
+
+  quizQuestions = pool;
+  currentIndex = session.currentIndex || 0;
+  userAnswers = session.userAnswers || new Array(pool.length).fill(null);
+  confirmedSet = new Set(session.confirmedArr || []);
+  timerSeconds = session.timerSeconds || 0;
+  quizStarted = true;
+
+  switchScreen('quiz');
+  document.getElementById('q-total').textContent = pool.length;
+  updateTimerDisplay();
+  renderQuestion();
+  timerInterval = setInterval(() => {
+    timerSeconds++;
+    updateTimerDisplay();
+    if (timerSeconds > 600) document.getElementById('timer').classList.add('warning');
+  }, 1000);
+  if (currentIndex >= pool.length - 1) {
+    document.getElementById('btn-next').style.display = 'none';
+    document.getElementById('btn-submit').style.display = '';
+  }
+}
+
 function startQuiz() {
   // Collect selected categories
   const selectedCats = [];
@@ -615,18 +683,17 @@ function saveProgress(qId, isCorrect) {
   data.progress[qId].attempts++;
   if (isCorrect) data.progress[qId].correct++;
   data.progress[qId].lastAttempt = new Date().toISOString();
-  // Wrong book
   if (!isCorrect) {
     if (!data.wrongBook.includes(qId)) data.wrongBook.push(qId);
   } else {
     data.wrongBook = data.wrongBook.filter(id => id !== qId);
   }
-  // Stats
   const today = new Date().toISOString().slice(0, 10);
   if (!data.stats.daily[today]) data.stats.daily[today] = { answered: 0, correct: 0 };
   data.stats.daily[today].answered++;
   if (isCorrect) data.stats.daily[today].correct++;
   saveData(data);
+  saveSession();
 }
 
 function nextQuestion() {
@@ -649,7 +716,7 @@ function submitQuiz() {
 }
 
 function confirmQuit() {
-  if (quizStarted && confirm('确定要退出吗？已答题目进度会保留。')) {
+  if (quizStarted && confirm('确定要退出吗？答题进度已自动保存。')) {
     stopTimer();
     switchScreen('home');
   }
@@ -686,6 +753,7 @@ function formatTime(sec) {
 
 // ==================== RESULTS ====================
 function showResults() {
+  clearSession(); // Quiz completed, remove saved session
   switchScreen('result');
   let correct = 0, wrong = 0;
   const detailList = document.getElementById('detail-list');
